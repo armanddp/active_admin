@@ -16,7 +16,7 @@ describe ActiveAdmin do
   end
 
   it "should default the application name" do
-    ActiveAdmin.site_title.should == Rails.application.class.to_s.split('::').first
+    ActiveAdmin.site_title.should == Rails.application.class.to_s.split('::').first.titlecase
   end
 
   it "should set the site title" do
