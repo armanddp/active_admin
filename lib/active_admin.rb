@@ -3,6 +3,7 @@ require 'devise'
 require 'kaminari'
 require 'sass'
 require 'active_admin/arbre'
+require 'active_admin/engine'
 
 module ActiveAdmin
 
@@ -24,6 +25,7 @@ module ActiveAdmin
   autoload :MenuItem,                 'active_admin/menu_item'
   autoload :Namespace,                'active_admin/namespace'
   autoload :PageConfig,               'active_admin/page_config'
+  autoload :Reloader,                 'active_admin/reloader'
   autoload :Resource,                 'active_admin/resource'
   autoload :ResourceController,       'active_admin/resource_controller'
   autoload :Renderer,                 'active_admin/renderer'
@@ -33,6 +35,12 @@ module ActiveAdmin
   autoload :ViewFactory,              'active_admin/view_factory'
   autoload :ViewHelpers,              'active_admin/view_helpers'
   autoload :Views,                    'active_admin/views'
+
+  class Railtie < ::Rails::Railtie
+    # Add load paths straight to I18n, so engines and application can overwrite it.
+    require 'active_support/i18n'
+    I18n.load_path += Dir[File.expand_path('../active_admin/locales/*.yml', __FILE__)]
+  end
 
   module Configuration
 
@@ -89,9 +97,11 @@ module ActiveAdmin
     @@display_name_methods = [:display_name, :full_name, :name, :username, :login, :title, :email, :to_s]
     mattr_accessor :display_name_methods
 
-    @@views_path = File.expand_path('../active_admin/views/templates', __FILE__)
-    mattr_reader :views_path
+    @@assets_path = File.expand_path("../assets", __FILE__)
+    mattr_reader :assets_path
 
+    @@views_path = File.expand_path("../views/templates", __FILE__)
+    mattr_reader :views_path
   end
 
   extend Configuration
@@ -103,8 +113,7 @@ module ActiveAdmin
     # Gets called within the initializer
     def setup
       # Register the default assets
-      register_stylesheet 'admin/active_admin.css'
-      register_javascript 'active_admin_vendor.js'
+      register_stylesheet 'active_admin.css'
       register_javascript 'active_admin.js'
 
       # Since we're dealing with all our own file loading, we need
@@ -112,30 +121,28 @@ module ActiveAdmin
       # If not, file naming becomes very important and can cause clashes.
       ActiveSupport::Dependencies.autoload_paths.reject!{|path| load_paths.include?(path) }
 
-      # Add the Active Admin view path to the rails view path
-      ActionController::Base.append_view_path ActiveAdmin.views_path
-
       # Don't eagerload our configs, we'll deal with them ourselves
       Rails.application.config.eager_load_paths = Rails.application.config.eager_load_paths.reject do |path|
         load_paths.include?(path)
       end
 
-      # Dispatch request which gets triggered once in production
-      # and on every require in development mode
-      ActionDispatch::Reloader.to_prepare do
-        ActiveAdmin.unload!
-        Rails.application.reload_routes!
-      end
+      ActiveAdmin::Reloader.new(Rails.version).attach!
 
       yield self
 
       generate_stylesheets
     end
 
+    # Setup SASS
     def generate_stylesheets
-      # Setup SASS
-      require 'sass/plugin' # This must be required after initialization
-      Sass::Plugin.add_template_location(File.expand_path("../active_admin/stylesheets/", __FILE__), File.join(Sass::Plugin.options[:css_location], 'admin'))
+      # Create our own asset pipeline in Rails 3.0
+      if Rails.version[0..2] == '3.0'
+        Sass::Plugin.add_template_location(File.expand_path("../../app/assets/stylesheets", __FILE__))
+        Sass::Plugin.add_template_location(File.expand_path("../active_admin/sass", __FILE__))
+      else
+        # Otherwise, just add our mixins to the load path for SASS
+        Sass::Engine::DEFAULT_OPTIONS[:load_paths] <<  File.expand_path("../../app/assets/stylesheets", __FILE__)
+      end
     end
 
     # Registers a brand new configuration for the given resource.

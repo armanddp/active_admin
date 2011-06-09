@@ -1,3 +1,5 @@
+//= require "vendor"
+
 /* Active Admin JS */
 
 $(function(){
